@@ -1,35 +1,53 @@
 from flask import Flask, request
-# import requests
-# import os
+from bot import responder
+import requests
 
+token = ""
+phone_number_id = ""
+# Inicializar o aplicativo Flask
 app = Flask(__name__)
 
-menu = ("Olá! Eu sou um bot da empresa tal. Como posso ajudar você hoje?\n"
-        "1. Horário de Atendimento\n"
-        "2. Número para Contato\n"
-        "3. Localização da Empresa")
-
-def bot(texto):
-    msg = texto.lower().strip().replace("?", "").replace("!", "")
-
-    if msg in ["olá", "oi", "bom dia", "boa tarde", "boa noite"]:
-        return menu
-    elif msg == "1":
-        return "🕒 Atendimento: Segunda à Sexta, das 9h às 18h."
-    elif msg == "2":
-        return "📞 Contato é (11) 1234-5678."
-    elif msg == "3":
-        return "📍 Rua Exemplo, 123, São Paulo, SP."
-    else:
-        return "❌ Desculpe, não entendi sua solicitação. Por favor, escolha uma das opções do menu."
-    
-
+# Rota para receber mensagens do webhook
 @app.route('/webhook', methods=['POST'])
-def bot_route():
+def webhook():
     dados = request.json
-    msg = dados.get["mensagem", ""]
-    resposta = bot(msg)
-    return {"resposta": resposta}
-    
 
-app.run(port=5000)
+    try:
+        mensagem = dados["entry"][0]["changes"][0]["value"]["messages"][0]
+        msg = mensagem["text"]["body"]
+        numero = mensagem["from"]
+    except (KeyError, IndexError):
+        return "OK", 200
+    
+    resposta = responder(msg)
+    enviar_mensagem(numero, resposta)
+    return "OK", 200
+
+def enviar_mensagem(numero, texto):
+    url = f"https://graph.facebook.com/v18.0/{phone_number_id}/messages"
+
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": numero,
+        "text": { "body": texto }
+    }
+
+    response = requests.post(url, headers=headers, json=payload)
+
+@app.route('/webhook', methods=['GET'])
+def verify():
+    token = request.args.get('hub.verify_token')
+    challenge = request.args.get('hub.challenge')
+
+    if token == 'seu_token_de_verificacao':
+        return challenge
+    return "Erro", 403
+
+# Iniciar o servidor Flask   
+if __name__ == '__main__':
+    app.run(debug=True,port=5000)
